@@ -68,6 +68,7 @@
 #include <bmx/essence_parser/D10RawEssenceReader.h>
 #include <bmx/essence_parser/MPEG2AspectRatioFilter.h>
 #include <bmx/mxf_helper/RDD36MXFDescriptorHelper.h>
+#include <bmx/mxf_helper/VC3MXFDescriptorHelper.h>
 #include <bmx/wave/WaveFileIO.h>
 #include <bmx/wave/WaveFileChunk.h>
 #include <bmx/wave/WaveReader.h>
@@ -173,6 +174,7 @@ struct RawInput
     BMX_OPT_PROP_DECL(uint8_t, afd);
     BMX_OPT_PROP_DECL(uint32_t, component_depth);
     uint32_t input_height;
+    uint32_t input_width;
     bool have_avci_header;
     bool d10_fixed_frame_size;
     BMX_OPT_PROP_DECL(MXFSignalStandard, signal_standard);
@@ -651,6 +653,8 @@ static void usage(const char *cmd)
     printf("  --afd <value>           Active Format Descriptor 4-bit code from table 1 in SMPTE ST 2016-1. Default not set\n");
     printf("  -c <depth>              Component depth for uncompressed/DV100/RDD-36 video. Either 8 or 10. Default parsed, 8 for uncompressed/DV100 and 10 for RDD-36\n");
     printf("  --height <value>        Height of input uncompressed video data. Default is the production aperture height, except for PAL (592) and NTSC (496)\n");
+    printf(" --width <value> Width of input for variable size codecs (VC3 DNxHR only)\n");
+    printf(" --height <value> Height of input for variable size codecs (VC3 DNxHR only)\n");
     printf("  --signal-std  <value>   Set the video signal standard. The <value> is one of the following:\n");
     printf("                              'none', 'bt601', 'bt1358', 'st347', 'st274', 'st296', 'st349', 'st428'\n");
     printf("  --frame-layout <value>  Set the video frame layout. The <value> is one of the following:\n");
@@ -832,6 +836,11 @@ static void usage(const char *cmd)
     printf("  --vc3_720p_1258 <name>  Raw VC3/DNxHD 1280x720p 45 Mbps input file\n");
     printf("  --vc3_1080p_1259 <name> Raw VC3/DNxHD 1920x1080p 85 Mbps input file\n");
     printf("  --vc3_1080i_1260 <name> Raw VC3/DNxHD 1920x1080i 85 Mbps input file\n");
+    printf("  --vc3_dnxhr_444  <name> Raw VC3/DNxHR 4:4:4 12-bit input file\n");
+    printf("  --vc3_dnxhr_hqx  <name> Raw VC3/DNxHR High Quality 12-bit input file\n");
+    printf("  --vc3_dnxhr_hq   <name> Raw VC3/DNxHR High Quality input file\n");
+    printf("  --vc3_dnxhr_sq   <name> Raw VC3/DNxHR Standard Quality input file\n");
+    printf("  --vc3_dnxhr_lb   <name> Raw VC3/DNxHR Low Bandwidth input file\n");
     printf("  --pcm <name>            Raw PCM audio input file\n");
     printf("  --wave <name>           Wave PCM audio input file\n");
     printf("  --anc <name>            Raw ST 436 Ancillary data. Currently requires the --anc-const option\n");
@@ -2061,6 +2070,23 @@ int main(int argc, const char** argv)
                 return 1;
             }
             BMX_OPT_PROP_SET(input.component_depth, value);
+            cmdln_index++;
+            continue; // skip input reset at the end
+        }
+        else if (strcmp(argv[cmdln_index], "--width") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for option '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            if (sscanf(argv[cmdln_index + 1], "%u", &uvalue) != 1 || uvalue == 0) {
+                usage(argv[0]);
+                fprintf(stderr, "Invalid value '%s' for option '%s'\n", argv[cmdln_index + 1], argv[cmdln_index]);
+                return 1;
+            }
+            input.input_width = uvalue;
             cmdln_index++;
             continue; // skip input reset at the end
         }
@@ -4001,6 +4027,71 @@ int main(int argc, const char** argv)
             inputs.push_back(input);
             cmdln_index++;
         }
+        else if (strcmp(argv[cmdln_index], "--vc3_dnxhr_444") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for input '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            input.essence_type = VC3_DNXHR_444;
+            input.filename = argv[cmdln_index + 1];
+            inputs.push_back(input);
+            cmdln_index++;
+        }
+        else if (strcmp(argv[cmdln_index], "--vc3_dnxhr_hqx") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for input '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            input.essence_type = VC3_DNXHR_HQX;
+            input.filename = argv[cmdln_index + 1];
+            inputs.push_back(input);
+            cmdln_index++;
+        }
+        else if (strcmp(argv[cmdln_index], "--vc3_dnxhr_hq") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for input '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            input.essence_type = VC3_DNXHR_HQ;
+            input.filename = argv[cmdln_index + 1];
+            inputs.push_back(input);
+            cmdln_index++;
+        }
+        else if (strcmp(argv[cmdln_index], "--vc3_dnxhr_sq") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for input '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            input.essence_type = VC3_DNXHR_SQ;
+            input.filename = argv[cmdln_index + 1];
+            inputs.push_back(input);
+            cmdln_index++;
+        }
+        else if (strcmp(argv[cmdln_index], "--vc3_dnxhr_lb") == 0)
+        {
+            if (cmdln_index + 1 >= argc)
+            {
+                usage(argv[0]);
+                fprintf(stderr, "Missing argument for input '%s'\n", argv[cmdln_index]);
+                return 1;
+            }
+            input.essence_type = VC3_DNXHR_LB;
+            input.filename = argv[cmdln_index + 1];
+            inputs.push_back(input);
+            cmdln_index++;
+        }
         else if (strcmp(argv[cmdln_index], "--pcm") == 0)
         {
             if (cmdln_index + 1 >= argc)
@@ -4245,7 +4336,17 @@ int main(int argc, const char** argv)
                 BMX_OPT_PROP_SET(input->component_depth, 10);
             }
         }
-
+        
+        // change default component depth for VC-3/DNxHR 12-bit
+        for (i = 0; i < inputs.size(); i++) {
+            RawInput *input = &inputs[i];
+            if ((input->essence_type == VC3_DNXHR_444 ||
+                    input->essence_type == VC3_DNXHR_HQX) &&
+                !BMX_OPT_PROP_IS_SET(input->component_depth))
+            {
+                BMX_OPT_PROP_SET(input->component_depth, 12);
+            }
+        }
 
         // extract essence info
         for (i = 0; i < inputs.size(); i++) {
@@ -4397,7 +4498,12 @@ int main(int argc, const char** argv)
                     input->essence_type = VC3_1080I_1242;
                 } else {
                     vc3_parser->ParseFrameInfo(input->raw_reader->GetSampleData(), input->raw_reader->GetSampleDataSize());
+                    if (input->input_width == 0)
+                        input->input_width = vc3_parser->GetFrameWidth();
+                    if (input->input_height == 0)
+                        input->input_height = vc3_parser->GetFrameHeight();
 
+                    input->raw_reader->SetFixedSampleSize(vc3_parser->GetFrameSize());
                     switch (vc3_parser->GetCompressionId())
                     {
                         case 1235:
@@ -4441,6 +4547,22 @@ int main(int argc, const char** argv)
                             break;
                         case 1260:
                             input->essence_type = VC3_1080I_1260;
+                            break;
+                        // DNxHR
+                        case 1270:
+                            input->essence_type = VC3_DNXHR_444;
+                            break;
+                        case 1271:
+                            input->essence_type = VC3_DNXHR_HQX;
+                            break;
+                        case 1272:
+                            input->essence_type = VC3_DNXHR_HQ;
+                            break;
+                        case 1273:
+                            input->essence_type = VC3_DNXHR_SQ;
+                            break;
+                        case 1274:
+                            input->essence_type = VC3_DNXHR_LB;
                             break;
                         default:
                             log_error("Unknown VC3 essence type\n");
@@ -5568,6 +5690,11 @@ int main(int argc, const char** argv)
                 case VC3_720P_1258:
                 case VC3_1080P_1259:
                 case VC3_1080I_1260:
+                case VC3_DNXHR_444:
+                case VC3_DNXHR_HQX:
+                case VC3_DNXHR_HQ:
+                case VC3_DNXHR_SQ:
+                case VC3_DNXHR_LB:
                     if (BMX_OPT_PROP_IS_SET(input->afd))
                         clip_track->SetAFD(input->afd);
                     break;
@@ -5669,6 +5796,13 @@ int main(int argc, const char** argv)
                     if (BMX_OPT_PROP_IS_SET(input->rdd36_opaque))
                         rdd36_helper->SetIsOpaque(input->rdd36_opaque);
                 }
+                VC3MXFDescriptorHelper *vc3_helper = dynamic_cast<VC3MXFDescriptorHelper*>(pict_helper);
+                if (vc3_helper) {
+                    // if (input->input_width > 0)
+                        vc3_helper->SetFrameWidth(3840);
+                    // if (input->input_height > 0)
+                        vc3_helper->SetFrameHeight(2160);
+                }
             } else if (sound_helper) {
                 if (BMX_OPT_PROP_IS_SET(output_sound_info->ref_image_edit_rate))
                     sound_helper->SetReferenceImageEditRate(output_sound_info->ref_image_edit_rate);
@@ -5719,6 +5853,11 @@ int main(int argc, const char** argv)
                 case VC3_720P_1258:
                 case VC3_1080P_1259:
                 case VC3_1080I_1260:
+                case VC3_DNXHR_444:
+                case VC3_DNXHR_HQX:
+                case VC3_DNXHR_HQ:
+                case VC3_DNXHR_SQ:
+                case VC3_DNXHR_LB:
                 case UNC_SD:
                 case UNC_HD_1080I:
                 case UNC_HD_1080P:
